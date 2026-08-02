@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ClubSnapshot, WalletAccount } from "@/lib/soccerverse";
-import { composeXayaMove, createTacticDraft, XAYA_ACCOUNTS_ADDRESS } from "@/lib/xaya";
+import { composeXayaMove, createTacticDraft, importPendingTactic, XAYA_ACCOUNTS_ADDRESS } from "@/lib/xaya";
 
 declare global {
   interface Window { ethereum?: { request: (request: { method: string; params?: unknown[] }) => Promise<unknown> } }
@@ -157,34 +157,44 @@ function TacticWorkbench({ wallet, accountName, clubId, squad, onMessage }: { wa
   const [style, setStyle] = useState(0);
   const [mode, setMode] = useState<"public" | "commit">("public");
   const [prepared, setPrepared] = useState<Awaited<ReturnType<typeof createTacticDraft>> | null>(null);
+  const [pendingJson, setPendingJson] = useState("");
+  const [importedPending, setImportedPending] = useState(false);
   const [status, setStatus] = useState("Prepare a team sheet: no transaction has been requested.");
   const [confirmed, setConfirmed] = useState(false);
   const draftKey = `versesoccer:tactic:${wallet}:${clubId}`;
   async function prepare() {
     try {
       const draft = await createTacticDraft(squad.map((player) => player.player_id), formation, style, clubId);
-      setPrepared(draft); setStatus(`${mode === "commit" ? "Hidden commit" : "Public team sheet"} prepared with 18 players. Review and simulate it before signing.`);
+      setPrepared(draft); setImportedPending(false); setStatus(`${mode === "commit" ? "Hidden commit" : "Public team sheet"} prepared with 18 players. Review and simulate it before signing.`);
     } catch (error) { setStatus(error instanceof Error ? error.message : "Could not prepare the team sheet."); }
+  }
+  async function importPending() {
+    try {
+      const draft = await importPendingTactic(pendingJson);
+      window.localStorage.setItem(draftKey, JSON.stringify(draft));
+      setPrepared(draft); setImportedPending(true); setMode("commit"); setStatus(`Tactique en attente vérifiée (hash valide) pour le club #${clubId}. Elle est prête à être simulée puis révélée.`);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Impossible d’importer la tactique en attente."); }
   }
   async function run(live: boolean, reveal = false) {
     if (!wallet || !accountName || !window.ethereum) { setStatus("Connect the manager’s MetaMask wallet first."); return; }
     try {
+      const shouldReveal = reveal || importedPending;
       let draft = prepared;
-      if (reveal) { const saved = window.localStorage.getItem(draftKey); if (!saved) throw new Error("No hidden tactic has been stored in this browser."); draft = JSON.parse(saved); }
+      if (reveal && !draft) { const saved = window.localStorage.getItem(draftKey); if (!saved) throw new Error("No hidden tactic has been stored in this browser."); draft = JSON.parse(saved); }
       if (!draft) throw new Error("Prepare the team sheet first.");
-      const move = reveal ? draft.revealMove : mode === "commit" ? draft.commitMove : draft.publicMove;
+      const move = shouldReveal ? draft.revealMove : mode === "commit" ? draft.commitMove : draft.publicMove;
       const transaction = await composeXayaMove(accountName, move);
       if (!live) {
         const gas = await window.ethereum.request({ method: "eth_estimateGas", params: [{ from: wallet, to: XAYA_ACCOUNTS_ADDRESS, data: transaction.data }] });
         setStatus(`Simulation accepted by Polygon. Token #${transaction.tokenId}, nonce ${transaction.nonce}, estimated gas ${String(gas)}. No transaction was sent.`); return;
       }
       if (!confirmed) throw new Error("Confirm that you want to create a real Polygon transaction first.");
-      if (mode === "commit" && !reveal) window.localStorage.setItem(draftKey, JSON.stringify(draft));
+      if (mode === "commit" && !shouldReveal) window.localStorage.setItem(draftKey, JSON.stringify(draft));
       const hash = await window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: wallet, to: XAYA_ACCOUNTS_ADDRESS, data: transaction.data }] });
       setStatus(`Transaction submitted to MetaMask: ${String(hash)}. Wait for Polygon confirmation before reloading the game state.`); onMessage("Tactics move sent to MetaMask. The GSP may take a moment to index it.");
     } catch (error) { setStatus(error instanceof Error ? error.message : "The preflight failed or the wallet rejected the request."); }
   }
-  return <section className="tactic-workbench"><header><div><b>TACTIC LAB / ATK TEST READY</b><span>Real Soccerverse commit-reveal format · Polygon mainnet</span></div><span className="tactic-state">{mode === "commit" ? "HIDDEN" : "PUBLIC"}</span></header><div className="tactic-controls"><label>FORMATION<select value={formation} onChange={(event) => setFormation(Number(event.target.value))}>{[[0,"4-4-2"],[1,"4-3-3"],[3,"3-4-3"],[12,"4-2-3-1"],[14,"4-4-1-1"],[19,"4-2-4"]].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>PLAY STYLE<select value={style} onChange={(event) => setStyle(Number(event.target.value))}>{[[0,"Normal"],[1,"Defensive"],[2,"Offensive"],[3,"Passing"],[4,"Counter"],[5,"Long balls"]].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>VISIBILITY<select value={mode} onChange={(event) => setMode(event.target.value as "public" | "commit")}><option value="public">Public · one move</option><option value="commit">Hidden · commit then reveal</option></select></label><button className="action" onClick={() => void prepare()}>PREPARE 18-PLAYER SHEET</button></div><p className="tactic-status">{status}</p>{prepared && <><details><summary>Inspect the exact Soccerverse move (JSON)</summary><code>{mode === "commit" ? prepared.commitMove : prepared.publicMove}</code></details><div className="tactic-actions"><button onClick={() => void run(false)}>SIMULATE ON POLYGON</button><label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}/> I understand this creates a real on-chain move.</label><button className="live-action" disabled={!confirmed} onClick={() => void run(true)}>SEND TO METAMASK</button>{mode === "commit" && <button onClick={() => void run(true, true)}>REVEAL SAVED TACTIC</button>}</div></>}</section>;
+  return <section className="tactic-workbench"><header><div><b>TACTIC LAB / ATK TEST READY</b><span>Real Soccerverse commit-reveal format · Polygon mainnet</span></div><span className="tactic-state">{mode === "commit" ? "HIDDEN" : "PUBLIC"}</span></header><div className="tactic-controls"><label>FORMATION<select value={formation} onChange={(event) => setFormation(Number(event.target.value))}>{[[0,"4-4-2"],[1,"4-3-3"],[3,"3-4-3"],[12,"4-2-3-1"],[14,"4-4-1-1"],[19,"4-2-4"]].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>PLAY STYLE<select value={style} onChange={(event) => setStyle(Number(event.target.value))}>{[[0,"Normal"],[1,"Defensive"],[2,"Offensive"],[3,"Passing"],[4,"Counter"],[5,"Long balls"]].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>VISIBILITY<select value={mode} onChange={(event) => setMode(event.target.value as "public" | "commit")}><option value="public">Public · one move</option><option value="commit">Hidden · commit then reveal</option></select></label><button className="action" onClick={() => void prepare()}>PREPARE 18-PLAYER SHEET</button></div><p className="tactic-status">{status}</p><details className="pending-import"><summary>IMPORT A PENDING TACTIC TO REVEAL</summary><textarea value={pendingJson} onChange={(event) => setPendingJson(event.target.value)} placeholder='Paste the complete object: { "hash", "prepared", "tacticsClubId" }'/><button onClick={() => void importPending()}>VERIFY & LOAD PENDING TACTIC</button></details>{prepared && <><details><summary>Inspect the exact Soccerverse move (JSON)</summary><code>{importedPending ? prepared.revealMove : mode === "commit" ? prepared.commitMove : prepared.publicMove}</code></details><div className="tactic-actions"><button onClick={() => void run(false)}>{importedPending ? "SIMULATE REVEAL" : "SIMULATE ON POLYGON"}</button><label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}/> I understand this creates a real on-chain move.</label><button className="live-action" disabled={!confirmed} onClick={() => void run(true)}>{importedPending ? "REVEAL VIA METAMASK" : "SEND TO METAMASK"}</button>{mode === "commit" && !importedPending && <button onClick={() => void run(true, true)}>REVEAL SAVED TACTIC</button>}</div></>}</section>;
 }
 function CommandDeck({ onSelect }: { onSelect: (command: string) => void }) {
   const commands = [

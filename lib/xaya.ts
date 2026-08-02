@@ -17,6 +17,7 @@ type TacticPayload = {
 };
 
 export type TacticDraft = { payload: TacticPayload; publicMove: string; commitMove: string; revealMove: string };
+type PendingTactic = { hash: string; prepared: string; tacticsClubId: number };
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -60,6 +61,25 @@ export async function createTacticDraft(playerIds: number[], formationId: number
     publicMove: JSON.stringify({ g: { sv: { st: { s: compressed } } } }),
     commitMove: JSON.stringify({ g: { sv: { st: { c: hash } } } }),
     revealMove: JSON.stringify({ g: { sv: { st: { r: { c: clubId, t: compressed } } } } }),
+  };
+}
+
+export async function importPendingTactic(serialized: string): Promise<TacticDraft> {
+  let pending: PendingTactic;
+  try { pending = JSON.parse(serialized) as PendingTactic; } catch { throw new Error("Le texte importé n’est pas un JSON de tactique valide."); }
+  if (!pending.hash || !pending.prepared || !Number.isInteger(pending.tacticsClubId)) throw new Error("Il manque hash, prepared ou tacticsClubId.");
+  let raw: string;
+  try {
+    const binary = atob(pending.prepared);
+    raw = pako.inflateRaw(Uint8Array.from(binary, (character) => character.charCodeAt(0)), { to: "string" });
+  } catch { throw new Error("La chaîne prepared ne peut pas être décompressée (Deflate Raw attendu)."); }
+  if (await sha256(raw) !== pending.hash) throw new Error("Le hash ne correspond pas au contenu prepared : reveal bloqué par sécurité.");
+  const payload = JSON.parse(raw) as TacticPayload;
+  return {
+    payload,
+    publicMove: JSON.stringify({ g: { sv: { st: { s: pending.prepared } } } }),
+    commitMove: JSON.stringify({ g: { sv: { st: { c: pending.hash } } } }),
+    revealMove: JSON.stringify({ g: { sv: { st: { r: { c: pending.tacticsClubId, t: pending.prepared } } } } }),
   };
 }
 
