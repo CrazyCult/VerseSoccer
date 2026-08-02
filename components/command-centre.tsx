@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ClubSnapshot, WalletAccount } from "@/lib/soccerverse";
 import { composeXayaMove, createTacticDraft, importPendingTactic, XAYA_ACCOUNTS_ADDRESS } from "@/lib/xaya";
 
@@ -107,23 +107,16 @@ export function CommandCentre() {
   const club = snapshot?.club;
   const presentation = snapshot?.presentation;
   const squad = snapshot?.squad ?? [];
-  const metrics = useMemo(() => [
-    ["CLUB BALANCE", club ? svc(club.balance) : "…", "green"],
-    ["AVG. RATING", club?.avg_player_rating_top21 ?? "…", "blue"],
-    ["TEAM FITNESS", snapshot ? `${snapshot.averageFitness}%` : "…", "green"],
-    ["FANS", club ? number(club.fans_current) : "…", ""],
-    ["LEAGUE POSITION", club?.league_position ? `#${club.league_position}` : "—", "gold"],
-  ], [club, snapshot]);
-
   return <main className="shell">
     <header className="topbar"><a className="brand" href="/">SOCCER<span>VERSE</span></a><nav>{["HOME", "WORLD", "TRANSFERS", "INFLUENCE", "VOTES", "DATABASE"].map((item, index) => <a className={index === 0 ? "active" : ""} href="#" key={item}>{item}</a>)}</nav><button className="wallet-button" onClick={connectWallet}>{wallet ? short(wallet) : "CONNECT WALLET"}</button></header>
 
-    <section className="intro"><div><p className="eyebrow">{wallet ? `WALLET ${short(wallet)} / ${selectedAccount?.name ?? "NO MANAGED ACCOUNT"}` : "PUBLIC PREVIEW / CONNECT TO PERSONALISE"}</p><h1>{club ? `MANAGING CLUB #${club.club_id}` : "SOCCERVERSE COMMAND CENTRE"}</h1><p className="message">{message}</p>{manualMode && <form className="manual-wallet" onSubmit={(event) => { event.preventDefault(); void resolveWallet(manualAddress.trim()); }}><input aria-label="Public wallet address" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="0x… public Polygon wallet address" pattern="0x[a-fA-F0-9]{40}" required/><button type="submit">OPEN THIS WALLET</button></form>}</div><div className="intro-actions"><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button>{accounts.length > 1 && <select value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{account.name}{account.clubId ? ` · club #${account.clubId}` : " · no club"}</option>)}</select>}</div></section>
-    {customizing && <section className="customizer"><b>YOUR HOME PAGE</b><span>Widgets are saved locally for this wallet.</span>{(Object.keys(widgetLabels) as Widget[]).map((widget) => <label key={widget}><input type="checkbox" checked={widgets.includes(widget)} onChange={() => toggleWidget(widget)} /> {widgetLabels[widget]}</label>)}</section>}
+    {club ? <ClubHeader club={club} presentation={presentation} /> : <section className="intro"><div><p className="eyebrow">{wallet ? `WALLET ${short(wallet)} / ${selectedAccount?.name ?? "NO MANAGED ACCOUNT"}` : "PUBLIC PREVIEW / CONNECT TO PERSONALISE"}</p><h1>SOCCERVERSE COMMAND CENTRE</h1><p className="message">{message}</p>{manualMode && <form className="manual-wallet" onSubmit={(event) => { event.preventDefault(); void resolveWallet(manualAddress.trim()); }}><input aria-label="Public wallet address" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="0x… public Polygon wallet address" pattern="0x[a-fA-F0-9]{40}" required/><button type="submit">OPEN THIS WALLET</button></form>}</div><div className="intro-actions"><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button>{accounts.length > 1 && <select value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{account.name}{account.clubId ? ` · club #${account.clubId}` : " · no club"}</option>)}</select>}</div></section>}
     {club && <nav className="club-tabs">{["OVERVIEW", "SQUAD", "TACTICS", "FINANCES", "TRANSFERS", "VOTES", "HISTORY"].map((tab) => <button key={tab} className={activeTab === tab ? "selected" : ""} onClick={() => { setActiveTab(tab); if (tab !== "TACTICS") setMessage(`${tab} workspace is being connected to the same live club data.`); }}>{tab}</button>)}</nav>}
-    <section className="metrics">{metrics.map(([label, value, tone]) => <div key={String(label)}><small>{label}</small><strong className={String(tone)}>{value}</strong></div>)}</section>
+    {activeTab === "OVERVIEW" && <section className="overview-tools"><span>{message}</span><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button>{accounts.length > 1 && <select value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{account.name}{account.clubId ? ` · club #${account.clubId}` : " · no club"}</option>)}</select>}</section>}
+    {activeTab === "OVERVIEW" && customizing && <section className="customizer"><b>YOUR HOME PAGE</b><span>Widgets are saved locally for this wallet.</span>{(Object.keys(widgetLabels) as Widget[]).map((widget) => <label key={widget}><input type="checkbox" checked={widgets.includes(widget)} onChange={() => toggleWidget(widget)} /> {widgetLabels[widget]}</label>)}</section>}
     {activeTab === "TACTICS" && <TacticWorkbench wallet={wallet} accountName={selectedAccount?.name ?? null} clubId={clubId} squad={squad} onMessage={setMessage}/>}
-    <section className="dashboard">
+    {activeTab !== "OVERVIEW" && activeTab !== "TACTICS" && <section className="workspace-empty"><b>{activeTab}</b><span>This dedicated club workspace is next. The overview widgets stay on the club home page.</span></section>}
+    {activeTab === "OVERVIEW" && <section className="dashboard">
       {widgets.includes("club") && <article className="panel club-panel" {...widgetProps("club")}><PanelTitle title="CLUB DESCRIPTION" detail={club ? `DIVISION ${club.division} · ${presentation?.leagueName}` : "LOADING LIVE DATA"}/><div className="club-description"><img src={presentation?.clubBadgeUrl} alt=""/><div><strong>{presentation?.clubName ?? "Live club profile"}</strong><p>{club?.country_id} · ID {club?.club_id} · Position {club?.league_position}</p><p className="form">{club?.form || "—"}</p><p>Manager: <b>{club?.manager_name}</b> · Transfers in: {club?.transfers_in ?? 0} · out: {club?.transfers_out ?? 0}</p></div></div><a className="action link-action" href={club ? `https://play.soccerverse.com/club/${club.club_id}` : "https://play.soccerverse.com"} target="_blank">OPEN OFFICIAL CLUB PAGE →</a></article>}
       {widgets.includes("stadium") && <article className="panel club-panel" {...widgetProps("stadium")}><PanelTitle title="STADIUM & MATCHES" detail={`${number(club?.stadium_size_current ?? 0)} CAPACITY · ${number(club?.fans_current ?? 0)} FANS`}/><div className="stadium"><img src={presentation?.stadiumImageUrl} alt=""/><div><b>{presentation?.stadiumName}</b><MatchList fixtures={snapshot?.fixtures ?? []} presentation={presentation}/></div></div></article>}
       {widgets.includes("league") && <article className="panel" {...widgetProps("league")}><PanelTitle title={presentation?.leagueName ?? "LEAGUE TABLE"} detail="LIVE TABLE"/><div className="table-head"><span># CLUB</span><span>P W D L PTS</span></div>{(snapshot?.leagueTable ?? []).slice(0, 8).map((row) => <div className={row.club_id === club?.club_id ? "league-row current" : "league-row"} key={row.club_id}><span>{row.new_position} <img src={presentation?.clubBadges[row.club_id]} alt=""/> {presentation?.clubNames[row.club_id]}</span><span>{row.played} {row.won} {row.drawn} {row.lost} <b>{row.pts}</b></span></div>)}</article>}
@@ -136,12 +129,13 @@ export function CommandCentre() {
       {widgets.includes("finance") && <article className="panel" {...widgetProps("finance")}><PanelTitle title="FINANCES" detail="LIVE CLUB DATA"/><div className="stat-stack"><Stat label="CLUB BALANCE" value={club ? svc(club.balance) : "…"}/><Stat label="TOTAL WAGES" value={club ? svc(club.total_wages ?? 0) : "…"}/><Stat label="SQUAD VALUE" value={club ? svc(club.total_player_value ?? 0) : "…"}/><Stat label="MANAGER ACCOUNT" value={selectedAccount ? svc(selectedAccount.balance ?? 0) : "CONNECT"}/></div></article>}
       {widgets.includes("market") && <article className="panel" {...widgetProps("market")}><PanelTitle title="MARKET PULSE" detail="CLUB INFLUENCE"/><div className="market-price">{club ? svc(club.last_price ?? 0) : "…"}<span>LAST PRICE</span></div><div className="market-line"><i/><i/><i/><i/><i/><i/></div><div className="split-stat"><span>7D VOLUME <b>{club ? svc(club.volume_7_day ?? 0) : "…"}</b></span><span>FORM <b>{club?.form || "—"}</b></span></div></article>}
       {widgets.includes("account") && <article className="panel" {...widgetProps("account")}><PanelTitle title="WALLET & ACCOUNTS" detail={wallet ? `${accounts.length} XAYA NAMES` : "NOT CONNECTED"}/>{wallet ? <><p className="wallet-address">{wallet}</p><div className="account-list">{accounts.slice(0, 5).map((account) => <button key={account.name} className={account.name === selectedAccount?.name ? "account active-account" : "account"} onClick={() => setSelectedAccount(account)}><b>{account.name}</b><span>{account.clubId ? `MANAGES CLUB #${account.clubId}` : "NO MANAGED CLUB"}</span></button>)}</div></> : <><p className="empty-copy">Connect MetaMask: VerseSoccer will only read your public Xaya names, find the account that manages a club, then open that club automatically.</p><button className="action" onClick={connectWallet}>CONNECT METAMASK</button></>}</article>}
-    </section>
-    {wallet && <CommandDeck onSelect={(command) => { if (command === "TACTICS") setActiveTab("TACTICS"); setMessage(`${command}: payload catalogue opened. Tactics are fully preflighted; the other game commands are documented but remain intentionally disabled until each rule is validated.`); }}/>}
+    </section>}
+    {activeTab === "OVERVIEW" && wallet && <CommandDeck onSelect={(command) => { if (command === "TACTICS") setActiveTab("TACTICS"); setMessage(`${command}: payload catalogue opened. Tactics are fully preflighted; the other game commands are documented but remain intentionally disabled until each rule is validated.`); }}/>}
   </main>;
 }
 
 function PanelTitle({ title, detail }: { title: string; detail: string }) { return <header className="panel-title"><h2>{title}</h2><span>{detail}</span></header>; }
+function ClubHeader({ club, presentation }: { club: import("@/lib/soccerverse").Club; presentation?: import("@/lib/soccerverse").Presentation }) { const stats = [["LAST PRICE", svc(club.last_price ?? 0), "last trade"], ["MARKET CAP", svc((club.last_price ?? 0) * 1_000_000), "derived from club price"], ["CLUB BALANCE", svc(club.balance), "live balance"], ["TOTAL WAGE", svc(club.total_wages ?? 0), "weekly"], ["TOP 21 AVG", String(club.avg_player_rating_top21 ?? "—"), "squad rating"]]; return <section className="club-command-header"><div className="club-identity"><img src={presentation?.clubBadgeUrl} alt=""/><div><h1>{presentation?.clubName ?? `Club #${club.club_id}`}</h1><p>🇮🇳 {club.country_id} <i/> ID {club.club_id} <i/> Position <b>{club.league_position ?? "—"}</b> <em>{club.form?.replace(/-/g, "")}</em></p><p><strong>{presentation?.leagueName ?? `${club.country_id} Division`}</strong> <span>Transfers: In {club.transfers_in ?? 0} · Out {club.transfers_out ?? 0}</span></p><p>Manager: <b>{club.manager_name ?? "—"}</b> <mark>Active today</mark></p></div></div><div className="club-header-stats">{stats.map(([label, value, hint]) => <div key={label}><small>{label}</small><b>{value}</b><span>{hint}</span></div>)}</div></section>; }
 function Stat({ label, value }: { label: string; value: string }) { return <div className="stat"><small>{label}</small><b>{value}</b></div>; }
 function svc(value: number) { return `SVC ${new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 }).format(value / 10_000)}`; }
 function number(value: number) { return new Intl.NumberFormat("en").format(value); }
@@ -166,6 +160,7 @@ function TacticWorkbench({ wallet, accountName, clubId, squad, onMessage }: { wa
   const [penaltyId, setPenaltyId] = useState<number | null>(null);
   const [tempo, setTempo] = useState(2);
   const [tackling, setTackling] = useState(2);
+  const [activePitchSlot, setActivePitchSlot] = useState<number | null>(null);
   const [chainId, setChainId] = useState<string | null>(null);
   const [status, setStatus] = useState("Prepare a team sheet: no transaction has been requested.");
   const [confirmed, setConfirmed] = useState(false);
@@ -190,7 +185,8 @@ function TacticWorkbench({ wallet, accountName, clubId, squad, onMessage }: { wa
   const promote = (playerId: number) => setSelection((current) => {
     const index = current.indexOf(playerId);
     if (index < 0 || index < 11 || current.length < 11) return current;
-    const next = [...current]; [next[10], next[index]] = [next[index], next[10]]; return next;
+    const target = activePitchSlot === null ? 10 : activePitchSlot;
+    const next = [...current]; [next[target], next[index]] = [next[index], next[target]]; setActivePitchSlot(null); return next;
   });
   async function prepare() {
     try {
