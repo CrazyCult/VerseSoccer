@@ -20,6 +20,8 @@ export function CommandCentre() {
   const [snapshot, setSnapshot] = useState<ClubSnapshot | null>(null);
   const [widgets, setWidgets] = useState<Widget[]>(defaultWidgets);
   const [customizing, setCustomizing] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualAddress, setManualAddress] = useState("");
   const [message, setMessage] = useState("Connect a wallet to open your managed club.");
 
   const clubId = selectedAccount?.clubId ?? 15516;
@@ -45,20 +47,33 @@ export function CommandCentre() {
     return () => { cancelled = true; };
   }, [clubId]);
 
-  async function connectWallet() {
-    if (!window.ethereum) { setMessage("MetaMask is required to connect a wallet. WalletConnect will be added once its project key is configured."); return; }
+  async function resolveWallet(address: string) {
     try {
       setMessage("Reading your Soccerverse accounts…");
-      const [address] = await window.ethereum.request({ method: "eth_requestAccounts" });
-      if (!address) throw new Error("No wallet selected");
       const response = await fetch(`/api/wallet/${address}`);
       const data = await response.json() as WalletAccount[] | { error: string };
       if (!response.ok || !Array.isArray(data)) throw new Error("Wallet lookup failed");
       setWallet(address);
+      setManualMode(false);
       setAccounts(data);
       const managed = data.find((account) => account.clubId !== null) ?? null;
       setSelectedAccount(managed);
       setMessage(managed ? `Opened ${managed.name}'s managed club.` : "No managed club was found in this wallet.");
+    } catch {
+      setMessage("Connection cancelled or the wallet could not be resolved.");
+    }
+  }
+
+  async function connectWallet() {
+    if (!window.ethereum) {
+      setManualMode(true);
+      setMessage("MetaMask is not available in this browser. Paste a public wallet address to open its Soccerverse accounts in read-only mode.");
+      return;
+    }
+    try {
+      const [address] = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (!address) throw new Error("No wallet selected");
+      await resolveWallet(address);
     } catch {
       setMessage("Connection cancelled or the wallet could not be resolved.");
     }
@@ -81,7 +96,7 @@ export function CommandCentre() {
   return <main className="shell">
     <header className="topbar"><a className="brand" href="/">SOCCER<span>VERSE</span></a><nav>{["HOME", "WORLD", "TRANSFERS", "INFLUENCE", "VOTES", "DATABASE"].map((item, index) => <a className={index === 0 ? "active" : ""} href="#" key={item}>{item}</a>)}</nav><button className="wallet-button" onClick={connectWallet}>{wallet ? short(wallet) : "CONNECT WALLET"}</button></header>
 
-    <section className="intro"><div><p className="eyebrow">{wallet ? `WALLET ${short(wallet)} / ${selectedAccount?.name ?? "NO MANAGED ACCOUNT"}` : "PUBLIC PREVIEW / CONNECT TO PERSONALISE"}</p><h1>{club ? `MANAGING CLUB #${club.club_id}` : "SOCCERVERSE COMMAND CENTRE"}</h1><p className="message">{message}</p></div><div className="intro-actions"><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button>{accounts.length > 1 && <select value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{account.name}{account.clubId ? ` · club #${account.clubId}` : " · no club"}</option>)}</select>}</div></section>
+    <section className="intro"><div><p className="eyebrow">{wallet ? `WALLET ${short(wallet)} / ${selectedAccount?.name ?? "NO MANAGED ACCOUNT"}` : "PUBLIC PREVIEW / CONNECT TO PERSONALISE"}</p><h1>{club ? `MANAGING CLUB #${club.club_id}` : "SOCCERVERSE COMMAND CENTRE"}</h1><p className="message">{message}</p>{manualMode && <form className="manual-wallet" onSubmit={(event) => { event.preventDefault(); void resolveWallet(manualAddress.trim()); }}><input aria-label="Public wallet address" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="0x… public Polygon wallet address" pattern="0x[a-fA-F0-9]{40}" required/><button type="submit">OPEN THIS WALLET</button></form>}</div><div className="intro-actions"><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button>{accounts.length > 1 && <select value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{account.name}{account.clubId ? ` · club #${account.clubId}` : " · no club"}</option>)}</select>}</div></section>
     {customizing && <section className="customizer"><b>YOUR HOME PAGE</b><span>Widgets are saved locally for this wallet.</span>{(Object.keys(widgetLabels) as Widget[]).map((widget) => <label key={widget}><input type="checkbox" checked={widgets.includes(widget)} onChange={() => toggleWidget(widget)} /> {widgetLabels[widget]}</label>)}</section>}
     <section className="metrics">{metrics.map(([label, value, tone]) => <div key={String(label)}><small>{label}</small><strong className={String(tone)}>{value}</strong></div>)}</section>
     <section className="dashboard">
