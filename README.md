@@ -1,6 +1,6 @@
 # VerseSoccer
 
-Frontend alternatif, open source et orienté données pour Soccerverse.
+Frontend alternatif, open source et orienté données pour Soccerverse. Le parcours d'accueil est : wallet MetaMask → noms Xaya `p/` possédés → compte Soccerverse → premier club managé → tableau de bord personnalisable.
 
 ## Démarrer
 
@@ -21,7 +21,19 @@ L’application est disponible sur http://localhost:3000. L’endpoint de contr�
 1. Pousser ce contenu dans CrazyCult/VerseSoccer.
 2. Dans Vercel, utiliser Add New puis Project et importer le dépôt.
 3. Conserver le preset Next.js détecté par Vercel.
-4. Ajouter SOCCERVERSE_API_BASE_URL=https://services.soccerverse.com/api dans les variables d’environnement.
+4. Ajouter les variables d’environnement suivantes :
+
+       SOCCERVERSE_API_BASE_URL=https://services.soccerverse.com/api
+       SOCCERVERSE_DATAPACK_URL=https://elrincondeldt.com/sv/rincon_v4.json
+
 5. Déployer. Les pull requests auront leurs previews ; la branche principale aura la production.
 
-Les endpoints publics Soccerverse sont en lecture seule. Les actions wallet et contrats devront passer dans un module séparé, avec confirmation explicite de l’utilisateur.
+## Données, wallets et widgets
+
+- Le bouton **Connect wallet** utilise l'extension MetaMask, uniquement pour obtenir l'adresse publique. Aucune transaction ni signature n'est demandée.
+- L'adresse est résolue via le sous-graphe Xaya public, puis les comptes et clubs via les API Soccerverse publiques.
+- Le premier compte qui gère un club est ouvert automatiquement. S'il y en a plusieurs, un sélecteur apparaît.
+- Les widgets peuvent être affichés ou masqués depuis **Customise widgets**. La configuration est enregistrée dans le navigateur, séparément pour chaque wallet.
+- Le datapack enrichit les IDs joueurs avec les vrais noms. Il est mis en cache 24 heures côté serveur.
+
+WalletConnect doit être ajouté avec un identifiant de projet Reown/WalletConnect propre au déploiement ; il n'est volontairement pas simulé. Les endpoints Soccerverse utilisés ici sont en lecture seule. Toute action de gestion on-chain devra rester dans un module séparé avec confirmation explicite de l’utilisateur.
