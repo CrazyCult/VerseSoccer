@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ClubSnapshot, WalletAccount } from "@/lib/soccerverse";
 import { composeXayaMove, createTacticDraft, importPendingTactic, XAYA_ACCOUNTS_ADDRESS } from "@/lib/xaya";
+import { TacticWorkbench } from "@/components/tactic-workbench";
 
 declare global {
   interface Window { ethereum?: { request: (request: { method: string; params?: unknown[] }) => Promise<unknown> } }
@@ -146,7 +147,7 @@ function MatchList({ fixtures, presentation }: { fixtures: import("@/lib/soccerv
   if (!matches.length) return <p className="empty-copy">Fixtures are loading from the Soccerverse game-state service.</p>;
   return <div className="match-list">{matches.map((fixture) => <div className="match-row" key={fixture.fixture_id}><small>{new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short" }).format(new Date(fixture.date * 1000))}</small><b>{presentation?.clubNames[fixture.home_club] ?? `Club #${fixture.home_club}`} {fixture.played ? `${fixture.home_goals} - ${fixture.away_goals}` : "–"} {presentation?.clubNames[fixture.away_club] ?? `Club #${fixture.away_club}`}</b></div>)}</div>;
 }
-function TacticWorkbench({ wallet, accountName, clubId, squad, onMessage }: { wallet: string | null; accountName: string | null; clubId: number; squad: import("@/lib/soccerverse").Player[]; onMessage: (value: string) => void }) {
+function LegacyTacticWorkbench({ wallet, accountName, clubId, squad, onMessage }: { wallet: string | null; accountName: string | null; clubId: number; squad: import("@/lib/soccerverse").Player[]; onMessage: (value: string) => void }) {
   const [formation, setFormation] = useState(12);
   const [style, setStyle] = useState(0);
   const [mode, setMode] = useState<"public" | "commit">("public");

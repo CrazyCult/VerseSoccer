@@ -18,7 +18,8 @@ type TacticPayload = {
 
 export type TacticDraft = { payload: TacticPayload; publicMove: string; commitMove: string; revealMove: string };
 type PendingTactic = { hash: string; prepared: string; tacticsClubId: number };
-export type TacticSetup = { formationId: number; playStyle: number; captain: number; cornerTaker: number; freeKickTaker: number; penaltyTaker: number; tempo: number; tackling: number };
+export type TacticSituationInput = { minute: number; formationId: number; playStyle: number; scoreCondition: number; goalMargin: number };
+export type TacticSetup = { formationId: number; playStyle: number; captain: number; penaltyTaker: number; tempo: number; tackling: number; cornerTaker?: number; freeKickTaker?: number; situations?: TacticSituationInput[] };
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -52,7 +53,7 @@ export async function createTacticDraft(playerIds: number[], setup: TacticSetup,
   const payload: TacticPayload = {
     s: salt(),
     ts: selected.map((id) => ({ id, t: setup.tempo, ts: setup.tackling })),
-    ta: [{ c: { fid: setup.formationId, gm: 0, s: 0, t: 0 }, l: Array.from({ length: 18 }, (_, index) => index), pi: { c: setup.captain, ct: setup.cornerTaker, fk: setup.freeKickTaker, p: setup.penaltyTaker, pt: setup.penaltyTaker, tm: setup.captain }, ps: { s: setup.playStyle, up: 0, utm: 0 } }],
+    ta: [{ c: { fid: setup.formationId, gm: 0, s: 0, t: 0 }, l: Array.from({ length: 18 }, (_, index) => index), pi: { c: setup.captain, ct: setup.penaltyTaker, fk: setup.penaltyTaker, p: setup.penaltyTaker, pt: setup.penaltyTaker, tm: setup.captain }, ps: { s: setup.playStyle, up: 0, utm: 0 } }, ...(setup.situations ?? []).sort((left, right) => left.minute - right.minute).map((situation) => ({ c: { fid: situation.formationId, gm: situation.goalMargin, s: situation.scoreCondition, t: situation.minute }, l: Array.from({ length: 18 }, (_, index) => index), pi: { c: setup.captain, ct: setup.penaltyTaker, fk: setup.penaltyTaker, p: setup.penaltyTaker, pt: setup.penaltyTaker, tm: setup.captain }, ps: { s: situation.playStyle, up: 0, utm: 0 } }))],
   };
   const raw = stableStringify(payload);
   const compressed = compress(raw);
