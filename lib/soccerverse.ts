@@ -13,15 +13,16 @@ export type Club = {
   transfers_in: number | null; transfers_out: number | null;
 };
 
-export type Player = { player_id: number; position_main: string; rating: number; fitness: number; value: number; country_id: string; display_name: string };
+export type Player = { player_id: number; position_main: string; rating: number; fitness: number; value: number; country_id: string; display_name: string; age: number; wages: number; contract: number; morale: number; injured: number | null; banned: number; form: string; allow_transfer: number; loaned_to_club: number | null };
 export type LeagueRow = { club_id: number; played: number; won: number; drawn: number; lost: number; goals_for: number; goals_against: number; pts: number; form: string; new_position: number };
 export type Influencer = { name: string; num: number; last_active: string | null };
 export type Trade = { id: number; time: string; buyer: string; seller: string; num: number; price: number };
 export type ClubNews = { id: number; playerName: string; text: string; date: number };
 export type Fixture = { fixture_id: number; home_club: number; away_club: number; home_goals: number | null; away_goals: number | null; attendance: number | null; date: number; played: boolean; comp_type?: number };
+export type BalanceSheet = { balance_sheet_id: number; date: number; game_week: number; cash_injection: number; gate_receipts: number; tv_revenue: number; sponsor: number; merchandise: number; transfers_in: number; transfers_out: number; prize_money: number; player_wages: number; ground_maintenance: number; managers_wage: number; agent_wages: number; shareholder_payouts: number; other_income: number; other_outgoings: number };
 export type Presentation = { clubName: string; clubBadgeUrl: string; clubColour: string; stadiumName: string; stadiumImageUrl: string; leagueName: string; leagueImageUrl: string; clubNames: Record<number, string>; clubBadges: Record<number, string> };
-export type ClubSnapshot = { club: Club; squad: Player[]; averageFitness: number; presentation: Presentation; leagueTable: LeagueRow[]; influencers: Influencer[]; trades: Trade[]; news: ClubNews[]; fixtures: Fixture[] };
-export type WalletAccount = { name: string; clubId: number | null; balance: number | null; lastActive: string | null };
+export type ClubSnapshot = { club: Club; squad: Player[]; averageFitness: number; presentation: Presentation; leagueTable: LeagueRow[]; influencers: Influencer[]; trades: Trade[]; news: ClubNews[]; fixtures: Fixture[]; balanceSheet: BalanceSheet[] };
+export type WalletAccount = { name: string; clubId: number | null; clubName: string | null; balance: number | null; lastActive: string | null };
 type Paginated<T> = { items: T[] };
 
 async function apiGet<T>(path: string): Promise<T> {
@@ -90,12 +91,13 @@ export async function getClubSnapshot(clubId = 15516): Promise<ClubSnapshot> {
   if (!club) throw new Error("Club not found");
   const squad = players.items.map((player) => ({ ...player, display_name: pack.players.get(player.player_id) ?? `Player #${player.player_id}` }));
   const averageFitness = squad.length ? Math.round(squad.reduce((total, player) => total + player.fitness, 0) / squad.length) : 0;
-  const [leagueTable, balances, tradeHistory, messages, fixtures] = await Promise.all([
+  const [leagueTable, balances, tradeHistory, messages, fixtures, balanceSheet] = await Promise.all([
     club.league_id ? apiGet<LeagueRow[]>(`/league_tables?league_id=${club.league_id}`) : Promise.resolve([]),
     apiGet<Paginated<Influencer>>(`/share_balances?club_id=${clubId}&per_page=10&sort_by=num&sort_order=desc`).then((data) => data.items),
     apiGet<Paginated<Trade>>(`/share_trade_history?club_id=${clubId}&per_page=10&sort_by=unix_time&sort_order=desc`).then((data) => data.items),
     apiGet<Array<{ message_id: number; data_1: number; data_2: number; date: number }>>(`/messages?club_id=${clubId}&season_id=${leagueTableSeasonHint()}&limit=6`).catch(() => []),
     gspGet<Fixture[]>("get_club_schedule", { club_id: clubId, season_id: 4 }).then((data) => data ?? []),
+    gspGet<BalanceSheet[]>("get_club_balance_sheet", { club_id: clubId, share_overview_id: clubId, type: "club", since: 7, season_id: 4 }).then((data) => data ?? []),
   ]);
   const clubInfo = pack.clubs.get(clubId);
   const stadium = pack.stadiums.get(club.stadium_id);
@@ -110,7 +112,7 @@ export async function getClubSnapshot(clubId = 15516): Promise<ClubSnapshot> {
     clubBadges: Object.fromEntries(leagueTable.map((row) => [row.club_id, absoluteAsset(badgeBase, `${row.club_id}.png`)])),
   };
   const news = messages.map((message) => ({ id: message.message_id, playerName: pack.players.get(message.data_1) ?? `Player #${message.data_1}`, text: message.data_2 ? `signed a contract for ${message.data_2} more seasons.` : "club update", date: message.date }));
-  return { club, squad, averageFitness, presentation, leagueTable, influencers: balances, trades: tradeHistory, news, fixtures };
+  return { club, squad, averageFitness, presentation, leagueTable, influencers: balances, trades: tradeHistory, news, fixtures, balanceSheet };
 }
 
 function leagueTableSeasonHint() { return 4; }
@@ -125,8 +127,8 @@ export async function getWalletAccounts(address: string): Promise<WalletAccount[
   const names = (graph.data?.addresses?.[0]?.names ?? []).filter((entry) => entry.ns?.ns === "p" && entry.name.trim().length > 0).map((entry) => entry.name.trim());
   if (!names.length) return [];
   const query = new URLSearchParams({ per_page: "100" }); names.forEach((name) => query.append("names", name));
-  const users = await apiGet<Paginated<User>>(`/users/detailed?${query}`);
-  return users.items.map((user) => ({ name: user.name, clubId: user.club_id, balance: user.balance, lastActive: user.last_active }));
+  const [users, pack] = await Promise.all([apiGet<Paginated<User>>(`/users/detailed?${query}`), getPack()]);
+  return users.items.map((user) => ({ name: user.name, clubId: user.club_id, clubName: user.club_id ? pack.clubs.get(user.club_id)?.n ?? null : null, balance: user.balance, lastActive: user.last_active }));
 }
 
 export function formatSVC(value: number) { return new Intl.NumberFormat("en", { maximumFractionDigits: 2, notation: "compact" }).format(value / valueDivisor); }
