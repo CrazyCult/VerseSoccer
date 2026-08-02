@@ -1,72 +1,77 @@
-const alerts = [
-  ["Confirm starting XI", "Required before kick-off", "03H", "cyan"],
-  ["Offer for A. Kane", "SVC 2.18M · transfer market", "18H", "gold"],
-  ["Club staff vote", "Influence decision", "OPEN", "green"],
-] as const;
+import { formatNumber, formatSVC, getClubSnapshot } from "@/lib/soccerverse";
 
-const tacticalPlayers = [
-  { left: "49%", top: "8%", enemy: false },
-  { left: "19%", top: "30%", enemy: false },
-  { left: "46%", top: "48%", enemy: false },
-  { left: "70%", top: "64%", enemy: false },
-  { left: "46%", top: "78%", enemy: false },
-  { left: "80%", top: "25%", enemy: true },
-  { left: "80%", top: "67%", enemy: true },
-];
+export const revalidate = 60;
 
-export default function Home() {
+export default async function Home() {
+  const live = await getClubSnapshot().catch(() => null);
+  const club = live?.club;
+  const squad = live?.squad ?? [];
+  const averageFitness = live?.averageFitness ?? 0;
+
+  const metrics = live && club ? [
+    ["CLUB BALANCE", "SVC " + formatSVC(club.balance), ""],
+    ["AVG. RATING", String(club.avg_player_rating_top21 ?? "—"), "blue"],
+    ["TEAM FITNESS", averageFitness + "%", "green"],
+    ["FANS", formatNumber(club.fans_current), "green"],
+    ["LEAGUE POSITION", club.league_position ? "#" + club.league_position : "—", "gold"],
+  ] : [
+    ["CLUB BALANCE", "UNAVAILABLE", ""],
+    ["AVG. RATING", "—", "blue"],
+    ["TEAM FITNESS", "—", "green"],
+    ["FANS", "—", "green"],
+    ["LEAGUE POSITION", "—", "gold"],
+  ];
+
   return (
     <main className="shell">
       <header className="topbar">
         <a className="brand" href="/">SOCCER<span>VERSE</span></a>
-        <nav>
-          {["HOME", "WORLD", "TRANSFERS", "INFLUENCE", "VOTES", "DATABASE"].map((item, index) => (
-            <a className={index === 0 ? "active" : ""} href="#" key={item}>{item}</a>
-          ))}
-        </nav>
-        <span className="wallet">SVC 6.02K</span>
+        <nav>{["HOME", "WORLD", "TRANSFERS", "INFLUENCE", "VOTES", "DATABASE"].map((item, index) => <a className={index === 0 ? "active" : ""} href="#" key={item}>{item}</a>)}</nav>
+        <span className="wallet">PUBLIC DATA</span>
       </header>
 
       <section className="intro">
-        <div><p className="eyebrow">KOLKATA GREEN / COMMUNITY NODE ONLINE</p><h1>COMMAND CENTRE</h1></div>
-        <span className="status">DEMO DATA · LIVE INTEGRATION NEXT</span>
+        <div><p className="eyebrow">{club ? club.country_id + " / CLUB " + club.club_id : "SOCCERVERSE / PUBLIC API"}</p><h1>{club?.manager_name ?? "CLUB DATA UNAVAILABLE"}</h1></div>
+        <span className={live ? "status" : "status offline"}>{live ? "● LIVE API · REFRESH 60S" : "● API TEMPORARILY UNAVAILABLE"}</span>
       </section>
 
       <section className="metrics">
-        {[["CLUB BALANCE", "SVC 4.82M", ""], ["INFLUENCE", "1.45M", "blue"], ["TEAM CONDITION", "88%", "green"], ["MARKET CHANGE", "+SVC 218K", "green"], ["NEXT KICK-OFF", "03H18", "gold"]].map(([label, value, tone]) => (
-          <div key={label}><small>{label}</small><strong className={tone}>{value}</strong></div>
-        ))}
+        {metrics.map(([label, value, tone]) => <div key={label}><small>{label}</small><strong className={tone}>{value}</strong></div>)}
       </section>
 
       <section className="dashboard">
         <article className="panel">
-          <PanelTitle title="NEXT FIXTURE" detail="IND CUP / R1" />
+          <PanelTitle title="CLUB PROFILE" detail={club ? club.country_id + " / DIVISION " + (club.league_position ?? "—") : "LIVE STATUS"} />
           <div className="fixture">
-            <strong>TODAY · 15:30</strong>
-            <div className="teams"><span><i className="crest">KG</i>KOLKATA</span><b>VS</b><span><i className="crest away">VA</i>VARANASI</span></div>
-            <small>VARANASI STADIUM · AWAY</small>
+            <strong>{club?.manager_name ?? "WAITING FOR API"}</strong>
+            <div className="teams"><span><i className="crest">SV</i>{club ? "CLUB " + club.club_id : "SOCCERVERSE"}</span><b>●</b><span><i className="crest away">FC</i>{club ? formatNumber(club.stadium_size_current) + " SEATS" : "PUBLIC DATA"}</span></div>
+            <small>{club ? "CURRENT FORM: " + (club.form || "—") : "The public endpoint did not return data."}</small>
           </div>
-          <button className="action">OPEN MATCH CENTRE →</button>
+          <a className="action link-action" href="https://legacy.soccerverse.com/club/15516" target="_blank">OPEN OFFICIAL CLUB PAGE →</a>
         </article>
 
         <article className="panel tactic">
-          <PanelTitle title="TACTICAL BOARD" detail="4–3–3 HIGH PRESS" />
+          <PanelTitle title="LIVE SQUAD OVERVIEW" detail={squad.length + " PLAYERS RETURNED"} />
           <div className="pitch">
-            {tacticalPlayers.map((player, index) => (
-              <i className={player.enemy ? "dot enemy" : "dot"} style={{ left: player.left, top: player.top }} key={index} />
-            ))}
+            {squad.slice(0, 11).map((player, index) => {
+              const positions = [["49%", "8%"], ["18%", "28%"], ["80%", "28%"], ["33%", "47%"], ["66%", "47%"], ["13%", "67%"], ["38%", "67%"], ["62%", "67%"], ["87%", "67%"], ["49%", "84%"], ["49%", "94%"]];
+              const [left, top] = positions[index];
+              return <i className="dot" style={{ left, top }} key={player.player_id} title={player.position_main + " · " + player.rating} />;
+            })}
           </div>
-          <footer className="caption"><b>FITNESS 88% · FAMILIARITY HIGH</b><span>EDIT TACTICS</span></footer>
+          <footer className="caption"><b>AVERAGE FITNESS {averageFitness}%</b><span>FORMATION IS VISUAL ONLY</span></footer>
         </article>
 
         <article className="panel">
-          <PanelTitle title="ATTENTION" detail="03 OPEN" />
+          <PanelTitle title="LIVE SQUAD" detail={squad.length + " PLAYERS"} />
           <div>
-            {alerts.map(([title, detail, due, tone]) => (
-              <div className={"row " + tone} key={title}><i /><div><b>{title}</b><small>{detail}</small></div><strong>{due}</strong></div>
+            {squad.slice(0, 3).map((player, index) => (
+              <div className={index === 0 ? "row cyan" : index === 1 ? "row gold" : "row green"} key={player.player_id}>
+                <i /><div><b>PLAYER #{player.player_id} · {player.position_main}</b><small>{player.country_id} · fitness {player.fitness}%</small></div><strong>{player.rating}</strong>
+              </div>
             ))}
           </div>
-          <div className="node-note"><b>CONNECTED FOOTBALL WORLD</b><br />Stadium, football operations and global-node data in one home screen.</div>
+          <div className="node-note"><b>LIVE READ-ONLY DATA</b><br />Club and player data is now served from the public Soccerverse API.</div>
         </article>
       </section>
     </main>
