@@ -37,13 +37,23 @@ type DatapackLeague = { c: string; d: string; n?: string; i?: string };
 type Datapack = { PackData?: { PlayerData?: { P?: DatapackPlayer[] }; ClubData?: { C?: DatapackClub[]; baseImageUrl?: string }; StadiumData?: { S?: DatapackStadium[]; baseImageUrl?: string }; LeagueData?: { L?: DatapackLeague[]; baseImageUrl?: string } } };
 
 async function getPack() {
-  const [baseResponse, overlayResponse] = await Promise.all([
-    fetch(process.env.SOCCERVERSE_DATAPACK_URL ?? communityPackUrl, { next: { revalidate: 86_400 } }),
+  const customPackUrl = process.env.SOCCERVERSE_DATAPACK_URL;
+  const [baselineResponse, customResponse, overlayResponse] = await Promise.all([
+    fetch(communityPackUrl, { next: { revalidate: 86_400 } }),
+    customPackUrl ? fetch(customPackUrl, { next: { revalidate: 86_400 } }) : Promise.resolve(null),
     fetch(process.env.SOCCERVERSE_PLAYER_DATAPACK_URL ?? playerOverlayUrl, { next: { revalidate: 86_400 } }),
   ]);
-  const base = baseResponse.ok ? await baseResponse.json() as Datapack : {};
+  const baseline = baselineResponse.ok ? await baselineResponse.json() as Datapack : {};
+  const custom = customResponse?.ok ? await customResponse.json() as Datapack : {};
   const overlay = overlayResponse.ok ? await overlayResponse.json() as Datapack : {};
-  const basePack = base.PackData ?? {};
+  const baselinePack = baseline.PackData ?? {};
+  const customPack = custom.PackData ?? {};
+  const basePack = {
+    PlayerData: customPack.PlayerData?.P?.length ? customPack.PlayerData : baselinePack.PlayerData,
+    ClubData: customPack.ClubData?.C?.length ? customPack.ClubData : baselinePack.ClubData,
+    StadiumData: customPack.StadiumData?.S?.length ? customPack.StadiumData : baselinePack.StadiumData,
+    LeagueData: customPack.LeagueData?.L?.length ? customPack.LeagueData : baselinePack.LeagueData,
+  };
   const overlayPlayers = overlay.PackData?.PlayerData?.P ?? [];
   const players = new Map<number, string>();
   [...(basePack.PlayerData?.P ?? []), ...overlayPlayers].forEach((player) => {
