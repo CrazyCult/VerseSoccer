@@ -1,4 +1,4 @@
-import { createPublicClient, encodeFunctionData, http } from "viem";
+import { createPublicClient, encodeFunctionData, fallback, http } from "viem";
 import pako from "pako";
 
 export const XAYA_ACCOUNTS_ADDRESS = "0x8C12253F71091b9582908C8a44F78870Ec6F304F" as const;
@@ -64,7 +64,9 @@ export async function createTacticDraft(playerIds: number[], formationId: number
 }
 
 export async function composeXayaMove(name: string, move: string) {
-  const client = createPublicClient({ transport: http("https://polygon-rpc.com") });
+  // polygon-rpc.com now requires an API key. Keep two public Polygon endpoints so a
+  // temporary rate limit on one provider does not block a wallet from preparing a move.
+  const client = createPublicClient({ transport: fallback([http("https://polygon.drpc.org"), http("https://polygon.publicnode.com")]) });
   const tokenId = await client.readContract({ address: XAYA_ACCOUNTS_ADDRESS, abi: xayaAccountsAbi, functionName: "tokenIdForName", args: ["p", name] });
   const nonce = await client.readContract({ address: XAYA_ACCOUNTS_ADDRESS, abi: xayaAccountsAbi, functionName: "nextNonce", args: [tokenId] });
   return {
