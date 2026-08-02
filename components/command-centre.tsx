@@ -5,6 +5,7 @@ import type { ClubSnapshot, WalletAccount } from "@/lib/soccerverse";
 import { composeXayaMove, createTacticDraft, importPendingTactic, XAYA_ACCOUNTS_ADDRESS } from "@/lib/xaya";
 import { TacticWorkbench } from "@/components/tactic-workbench";
 import { FinanceWorkspace, SquadWorkspace } from "@/components/club-workspaces";
+import { PublicHome } from "@/components/public-home";
 
 declare global {
   interface Window { ethereum?: { request: (request: { method: string; params?: unknown[] }) => Promise<unknown> } }
@@ -29,7 +30,7 @@ export function CommandCentre() {
   const [message, setMessage] = useState("Connect a wallet to open your managed club.");
   const [activeTab, setActiveTab] = useState("OVERVIEW");
 
-  const clubId = selectedAccount?.clubId ?? 15516;
+  const clubId = selectedAccount?.clubId ?? null;
   const storageKey = `versesoccer:widgets:${wallet ?? "public"}`;
 
   useEffect(() => {
@@ -44,6 +45,10 @@ export function CommandCentre() {
   }, [storageKey, widgets]);
 
   useEffect(() => {
+    if (!clubId) {
+      setSnapshot(null);
+      return;
+    }
     let cancelled = false;
     setSnapshot(null);
     fetch(`/api/club/${clubId}`).then((response) => response.ok ? response.json() : Promise.reject())
@@ -113,15 +118,16 @@ export function CommandCentre() {
   return <main className="shell">
     <header className="topbar"><a className="brand" href="/">SOCCER<span>VERSE</span></a><nav>{["HOME", "WORLD", "TRANSFERS", "INFLUENCE", "VOTES", "DATABASE"].map((item, index) => <a className={index === 0 ? "active" : ""} href="#" key={item}>{item}</a>)}</nav>{accounts.length > 0 && <select className="top-account-select" value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{accountLabel(account)}</option>)}</select>}<button className="wallet-button" onClick={connectWallet}>{wallet ? short(wallet) : "CONNECT WALLET"}</button></header>
 
-    {club ? <ClubHeader club={club} presentation={presentation} /> : <section className="intro"><div><p className="eyebrow">{wallet ? `WALLET ${short(wallet)} / ${selectedAccount?.name ?? "NO MANAGED ACCOUNT"}` : "PUBLIC PREVIEW / CONNECT TO PERSONALISE"}</p><h1>SOCCERVERSE COMMAND CENTRE</h1><p className="message">{message}</p>{manualMode && <form className="manual-wallet" onSubmit={(event) => { event.preventDefault(); void resolveWallet(manualAddress.trim()); }}><input aria-label="Public wallet address" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="0x… public Polygon wallet address" pattern="0x[a-fA-F0-9]{40}" required/><button type="submit">OPEN THIS WALLET</button></form>}</div><div className="intro-actions"><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button>{accounts.length > 1 && <select value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{account.name}{account.clubId ? ` · club #${account.clubId}` : " · no club"}</option>)}</select>}</div></section>}
+    {club ? <ClubHeader club={club} presentation={presentation} /> : wallet ? <section className="intro"><div><p className="eyebrow">WALLET {short(wallet)} / {selectedAccount?.name ?? "NO MANAGED ACCOUNT"}</p><h1>SOCCERVERSE COMMAND CENTRE</h1><p className="message">{message}</p></div><div className="intro-actions"><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button></div></section> : <PublicHome onConnect={connectWallet} message={message}/>}
+    {!wallet && manualMode && <form className="manual-wallet public-wallet-form" onSubmit={(event) => { event.preventDefault(); void resolveWallet(manualAddress.trim()); }}><input aria-label="Public wallet address" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="0x… public Polygon wallet address" pattern="0x[a-fA-F0-9]{40}" required/><button type="submit">OPEN THIS WALLET</button></form>}
     {club && <nav className="club-tabs">{["OVERVIEW", "SQUAD", "TACTICS", "FINANCES", "TRANSFERS", "VOTES", "HISTORY"].map((tab) => <button key={tab} className={activeTab === tab ? "selected" : ""} onClick={() => { setActiveTab(tab); if (tab !== "TACTICS") setMessage(`${tab} workspace is being connected to the same live club data.`); }}>{tab}</button>)}</nav>}
     {activeTab === "OVERVIEW" && <section className="overview-tools"><span>{message}</span><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button></section>}
     {activeTab === "OVERVIEW" && customizing && <section className="customizer"><b>YOUR HOME PAGE</b><span>Widgets are saved locally for this wallet.</span>{(Object.keys(widgetLabels) as Widget[]).map((widget) => <label key={widget}><input type="checkbox" checked={widgets.includes(widget)} onChange={() => toggleWidget(widget)} /> {widgetLabels[widget]}</label>)}</section>}
-    {activeTab === "TACTICS" && <TacticWorkbench wallet={wallet} accountName={selectedAccount?.name ?? null} clubId={clubId} squad={squad} fixtures={snapshot?.fixtures ?? []} presentation={presentation} onMessage={setMessage}/>}
+    {activeTab === "TACTICS" && clubId && <TacticWorkbench wallet={wallet} accountName={selectedAccount?.name ?? null} clubId={clubId} squad={squad} fixtures={snapshot?.fixtures ?? []} presentation={presentation} onMessage={setMessage}/>}
     {activeTab === "SQUAD" && <SquadWorkspace squad={squad}/>}
     {activeTab === "FINANCES" && snapshot && <FinanceWorkspace balanceSheet={snapshot.balanceSheet} balance={club?.balance ?? 0}/>}
     {activeTab !== "OVERVIEW" && activeTab !== "TACTICS" && activeTab !== "SQUAD" && activeTab !== "FINANCES" && <section className="workspace-empty"><b>{activeTab}</b><span>This dedicated club workspace is next. The overview widgets stay on the club home page.</span></section>}
-    {activeTab === "OVERVIEW" && <section className="dashboard">
+    {activeTab === "OVERVIEW" && club && <section className="dashboard">
       {widgets.includes("club") && <article className="panel club-panel" {...widgetProps("club")}><PanelTitle title="CLUB DESCRIPTION" detail={club ? `DIVISION ${club.division} · ${presentation?.leagueName}` : "LOADING LIVE DATA"}/><div className="club-description"><img src={presentation?.clubBadgeUrl} alt=""/><div><strong>{presentation?.clubName ?? "Live club profile"}</strong><p>{club?.country_id} · ID {club?.club_id} · Position {club?.league_position}</p><p className="form">{club?.form || "—"}</p><p>Manager: <b>{club?.manager_name}</b> · Transfers in: {club?.transfers_in ?? 0} · out: {club?.transfers_out ?? 0}</p></div></div><a className="action link-action" href={club ? `https://play.soccerverse.com/club/${club.club_id}` : "https://play.soccerverse.com"} target="_blank">OPEN OFFICIAL CLUB PAGE →</a></article>}
       {widgets.includes("stadium") && <article className="panel club-panel" {...widgetProps("stadium")}><PanelTitle title="STADIUM & MATCHES" detail={`${number(club?.stadium_size_current ?? 0)} CAPACITY · ${number(club?.fans_current ?? 0)} FANS`}/><div className="stadium"><img src={presentation?.stadiumImageUrl} alt=""/><div><b>{presentation?.stadiumName}</b><MatchList fixtures={snapshot?.fixtures ?? []} presentation={presentation}/></div></div></article>}
       {widgets.includes("league") && <article className="panel" {...widgetProps("league")}><PanelTitle title={presentation?.leagueName ?? "LEAGUE TABLE"} detail="LIVE TABLE"/><div className="table-head"><span># CLUB</span><span>P W D L PTS</span></div>{(snapshot?.leagueTable ?? []).slice(0, 8).map((row) => <div className={row.club_id === club?.club_id ? "league-row current" : "league-row"} key={row.club_id}><span>{row.new_position} <img src={presentation?.clubBadges[row.club_id]} alt=""/> {presentation?.clubNames[row.club_id]}</span><span>{row.played} {row.won} {row.drawn} {row.lost} <b>{row.pts}</b></span></div>)}</article>}
