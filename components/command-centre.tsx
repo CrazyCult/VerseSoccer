@@ -134,6 +134,7 @@ export function CommandCentre() {
       {widgets.includes("market") && <article className="panel"><PanelTitle title="MARKET PULSE" detail="CLUB INFLUENCE"/><div className="market-price">{club ? svc(club.last_price ?? 0) : "…"}<span>LAST PRICE</span></div><div className="market-line"><i/><i/><i/><i/><i/><i/></div><div className="split-stat"><span>7D VOLUME <b>{club ? svc(club.volume_7_day ?? 0) : "…"}</b></span><span>FORM <b>{club?.form || "—"}</b></span></div></article>}
       {widgets.includes("account") && <article className="panel"><PanelTitle title="WALLET & ACCOUNTS" detail={wallet ? `${accounts.length} XAYA NAMES` : "NOT CONNECTED"}/>{wallet ? <><p className="wallet-address">{wallet}</p><div className="account-list">{accounts.slice(0, 5).map((account) => <button key={account.name} className={account.name === selectedAccount?.name ? "account active-account" : "account"} onClick={() => setSelectedAccount(account)}><b>{account.name}</b><span>{account.clubId ? `MANAGES CLUB #${account.clubId}` : "NO MANAGED CLUB"}</span></button>)}</div></> : <><p className="empty-copy">Connect MetaMask: VerseSoccer will only read your public Xaya names, find the account that manages a club, then open that club automatically.</p><button className="action" onClick={connectWallet}>CONNECT METAMASK</button></>}</article>}
     </section>
+    {wallet && <CommandDeck onSelect={(command) => setMessage(`${command}: preflight is prepared. The exact Xaya move must be validated against the official command schema before MetaMask can sign it.`)}/>}
   </main>;
 }
 
@@ -147,4 +148,14 @@ function MatchList({ fixtures, presentation }: { fixtures: import("@/lib/soccerv
   const matches = fixtures.slice(-4);
   if (!matches.length) return <p className="empty-copy">Fixtures are loading from the Soccerverse game-state service.</p>;
   return <div className="match-list">{matches.map((fixture) => <div className="match-row" key={fixture.fixture_id}><small>{new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short" }).format(new Date(fixture.date * 1000))}</small><b>{presentation?.clubNames[fixture.home_club] ?? `Club #${fixture.home_club}`} {fixture.played ? `${fixture.home_goals} - ${fixture.away_goals}` : "–"} {presentation?.clubNames[fixture.away_club] ?? `Club #${fixture.away_club}`}</b></div>)}</div>;
+}
+function CommandDeck({ onSelect }: { onSelect: (command: string) => void }) {
+  const commands = [
+    ["TACTICS", "Submit team sheet · hide / reveal tactics"],
+    ["TRANSFERS", "Bid · auction · loan · contract"],
+    ["CLUB FINANCE", "Inject funds · resign manager"],
+    ["INFLUENCE", "Buy / sell orders · packs"],
+    ["GOVERNANCE", "Propose · vote · unlock manager"],
+  ];
+  return <section className="command-deck"><header><b>ON-CHAIN COMMAND DECK</b><span>Every live command requires a final wallet signature.</span></header><div>{commands.map(([title, description]) => <button key={title} onClick={() => onSelect(title)}><b>{title}</b><span>{description}</span><i>PREPARE →</i></button>)}</div></section>;
 }
