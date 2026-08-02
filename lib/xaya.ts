@@ -18,6 +18,7 @@ type TacticPayload = {
 
 export type TacticDraft = { payload: TacticPayload; publicMove: string; commitMove: string; revealMove: string };
 type PendingTactic = { hash: string; prepared: string; tacticsClubId: number };
+export type TacticSetup = { formationId: number; playStyle: number; captain: number; cornerTaker: number; freeKickTaker: number; penaltyTaker: number; tempo: number; tackling: number };
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -44,14 +45,14 @@ async function sha256(value: string) {
   return Array.from(new Uint8Array(hash), (item) => item.toString(16).padStart(2, "0")).join("");
 }
 
-export async function createTacticDraft(playerIds: number[], formationId: number, playStyle: number, clubId: number): Promise<TacticDraft> {
+export async function createTacticDraft(playerIds: number[], setup: TacticSetup, clubId: number): Promise<TacticDraft> {
   if (playerIds.length < 18) throw new Error("18 joueurs sont nécessaires pour préparer une composition.");
   const selected = playerIds.slice(0, 18);
   if (new Set(selected).size !== 18) throw new Error("La sélection contient des joueurs en double.");
   const payload: TacticPayload = {
     s: salt(),
-    ts: selected.map((id) => ({ id, t: 2, ts: 2 })),
-    ta: [{ c: { fid: formationId, gm: 0, s: 0, t: 0 }, l: Array.from({ length: 18 }, (_, index) => index), pi: { c: 0, ct: 0, fk: 0, p: 0, pt: 0, tm: 0 }, ps: { s: playStyle, up: 0, utm: 0 } }],
+    ts: selected.map((id) => ({ id, t: setup.tempo, ts: setup.tackling })),
+    ta: [{ c: { fid: setup.formationId, gm: 0, s: 0, t: 0 }, l: Array.from({ length: 18 }, (_, index) => index), pi: { c: setup.captain, ct: setup.cornerTaker, fk: setup.freeKickTaker, p: setup.penaltyTaker, pt: setup.penaltyTaker, tm: setup.captain }, ps: { s: setup.playStyle, up: 0, utm: 0 } }],
   };
   const raw = stableStringify(payload);
   const compressed = compress(raw);
