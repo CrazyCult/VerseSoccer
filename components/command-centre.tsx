@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ClubSnapshot, WalletAccount } from "@/lib/soccerverse";
+import { composeXayaMove, createTacticDraft, XAYA_ACCOUNTS_ADDRESS } from "@/lib/xaya";
 
 declare global {
-  interface Window { ethereum?: { request: (request: { method: string }) => Promise<string[]> } }
+  interface Window { ethereum?: { request: (request: { method: string; params?: unknown[] }) => Promise<unknown> } }
 }
 
 type Widget = "club" | "stadium" | "league" | "influencers" | "trades" | "news" | "chat" | "votes" | "market" | "squad" | "finance" | "account";
@@ -24,6 +25,7 @@ export function CommandCentre() {
   const [manualAddress, setManualAddress] = useState("");
   const [draggedWidget, setDraggedWidget] = useState<Widget | null>(null);
   const [message, setMessage] = useState("Connect a wallet to open your managed club.");
+  const [activeTab, setActiveTab] = useState("OVERVIEW");
 
   const clubId = selectedAccount?.clubId ?? 15516;
   const storageKey = `versesoccer:widgets:${wallet ?? "public"}`;
@@ -72,7 +74,7 @@ export function CommandCentre() {
       return;
     }
     try {
-      const [address] = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const [address] = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
       if (!address) throw new Error("No wallet selected");
       await resolveWallet(address);
     } catch {
@@ -118,8 +120,9 @@ export function CommandCentre() {
 
     <section className="intro"><div><p className="eyebrow">{wallet ? `WALLET ${short(wallet)} / ${selectedAccount?.name ?? "NO MANAGED ACCOUNT"}` : "PUBLIC PREVIEW / CONNECT TO PERSONALISE"}</p><h1>{club ? `MANAGING CLUB #${club.club_id}` : "SOCCERVERSE COMMAND CENTRE"}</h1><p className="message">{message}</p>{manualMode && <form className="manual-wallet" onSubmit={(event) => { event.preventDefault(); void resolveWallet(manualAddress.trim()); }}><input aria-label="Public wallet address" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="0x… public Polygon wallet address" pattern="0x[a-fA-F0-9]{40}" required/><button type="submit">OPEN THIS WALLET</button></form>}</div><div className="intro-actions"><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button>{accounts.length > 1 && <select value={selectedAccount?.name ?? ""} onChange={(event) => setSelectedAccount(accounts.find((account) => account.name === event.target.value) ?? null)}>{accounts.map((account) => <option key={account.name} value={account.name}>{account.name}{account.clubId ? ` · club #${account.clubId}` : " · no club"}</option>)}</select>}</div></section>
     {customizing && <section className="customizer"><b>YOUR HOME PAGE</b><span>Widgets are saved locally for this wallet.</span>{(Object.keys(widgetLabels) as Widget[]).map((widget) => <label key={widget}><input type="checkbox" checked={widgets.includes(widget)} onChange={() => toggleWidget(widget)} /> {widgetLabels[widget]}</label>)}</section>}
-    {club && <nav className="club-tabs">{["OVERVIEW", "SQUAD", "TACTICS", "FINANCES", "TRANSFERS", "VOTES", "HISTORY"].map((tab, index) => <button key={tab} className={index === 0 ? "selected" : ""} onClick={() => setMessage(`${tab} is the next dedicated club workspace.`)}>{tab}</button>)}</nav>}
+    {club && <nav className="club-tabs">{["OVERVIEW", "SQUAD", "TACTICS", "FINANCES", "TRANSFERS", "VOTES", "HISTORY"].map((tab) => <button key={tab} className={activeTab === tab ? "selected" : ""} onClick={() => { setActiveTab(tab); if (tab !== "TACTICS") setMessage(`${tab} workspace is being connected to the same live club data.`); }}>{tab}</button>)}</nav>}
     <section className="metrics">{metrics.map(([label, value, tone]) => <div key={String(label)}><small>{label}</small><strong className={String(tone)}>{value}</strong></div>)}</section>
+    {activeTab === "TACTICS" && <TacticWorkbench wallet={wallet} accountName={selectedAccount?.name ?? null} clubId={clubId} squad={squad} onMessage={setMessage}/>}
     <section className="dashboard">
       {widgets.includes("club") && <article className="panel club-panel" {...widgetProps("club")}><PanelTitle title="CLUB DESCRIPTION" detail={club ? `DIVISION ${club.division} · ${presentation?.leagueName}` : "LOADING LIVE DATA"}/><div className="club-description"><img src={presentation?.clubBadgeUrl} alt=""/><div><strong>{presentation?.clubName ?? "Live club profile"}</strong><p>{club?.country_id} · ID {club?.club_id} · Position {club?.league_position}</p><p className="form">{club?.form || "—"}</p><p>Manager: <b>{club?.manager_name}</b> · Transfers in: {club?.transfers_in ?? 0} · out: {club?.transfers_out ?? 0}</p></div></div><a className="action link-action" href={club ? `https://play.soccerverse.com/club/${club.club_id}` : "https://play.soccerverse.com"} target="_blank">OPEN OFFICIAL CLUB PAGE →</a></article>}
       {widgets.includes("stadium") && <article className="panel club-panel" {...widgetProps("stadium")}><PanelTitle title="STADIUM & MATCHES" detail={`${number(club?.stadium_size_current ?? 0)} CAPACITY · ${number(club?.fans_current ?? 0)} FANS`}/><div className="stadium"><img src={presentation?.stadiumImageUrl} alt=""/><div><b>{presentation?.stadiumName}</b><MatchList fixtures={snapshot?.fixtures ?? []} presentation={presentation}/></div></div></article>}
@@ -129,12 +132,12 @@ export function CommandCentre() {
       {widgets.includes("news") && <article className="panel" {...widgetProps("news")}><PanelTitle title="LATEST NEWS" detail="CLUB EVENTS"/>{(snapshot?.news ?? []).slice(0, 4).map((news) => <div className="news-row" key={news.id}><b>CONTRACT</b><span><strong>{news.playerName}</strong> {news.text}</span></div>)}</article>}
       {widgets.includes("chat") && <article className="panel" {...widgetProps("chat")}><PanelTitle title="CLUB CHAT" detail="COMING NEXT"/><p className="empty-copy">Club chat needs the authenticated Soccerverse messaging channel. This widget is ready for that connection; it does not fake messages.</p><button className="action" onClick={() => setMessage("Chat integration requires the official authenticated channel.")}>OPEN CLUB CHAT</button></article>}
       {widgets.includes("votes") && <article className="panel" {...widgetProps("votes")}><PanelTitle title="ACTIVE PROPOSALS" detail="VOTES"/><p className="empty-copy">No active proposals returned for this club.</p><button className="action" onClick={() => setMessage("The vote workspace will use the on-chain move composer.")}>VIEW ALL VOTES</button></article>}
-      {widgets.includes("squad") && <article className="panel"><PanelTitle title="SQUAD MONITOR" detail={`${squad.length} PLAYERS · REAL NAMES FROM DATAPACK`}/><div className="squad-list">{squad.slice(0, 6).map((player, index) => <div className={index % 3 === 0 ? "row cyan" : index % 3 === 1 ? "row gold" : "row green"} key={player.player_id}><i/><div><b>{player.display_name}</b><small>{player.position_main} · fitness {player.fitness}%</small></div><strong>{player.rating}</strong></div>)}</div><div className="node-note"><b>DATAPACK ACTIVE</b><br/>Names are resolved from the custom Soccerverse datapack; game ratings remain live API data.</div></article>}
-      {widgets.includes("finance") && <article className="panel"><PanelTitle title="FINANCES" detail="LIVE CLUB DATA"/><div className="stat-stack"><Stat label="CLUB BALANCE" value={club ? svc(club.balance) : "…"}/><Stat label="TOTAL WAGES" value={club ? svc(club.total_wages ?? 0) : "…"}/><Stat label="SQUAD VALUE" value={club ? svc(club.total_player_value ?? 0) : "…"}/><Stat label="MANAGER ACCOUNT" value={selectedAccount ? svc(selectedAccount.balance ?? 0) : "CONNECT"}/></div></article>}
-      {widgets.includes("market") && <article className="panel"><PanelTitle title="MARKET PULSE" detail="CLUB INFLUENCE"/><div className="market-price">{club ? svc(club.last_price ?? 0) : "…"}<span>LAST PRICE</span></div><div className="market-line"><i/><i/><i/><i/><i/><i/></div><div className="split-stat"><span>7D VOLUME <b>{club ? svc(club.volume_7_day ?? 0) : "…"}</b></span><span>FORM <b>{club?.form || "—"}</b></span></div></article>}
-      {widgets.includes("account") && <article className="panel"><PanelTitle title="WALLET & ACCOUNTS" detail={wallet ? `${accounts.length} XAYA NAMES` : "NOT CONNECTED"}/>{wallet ? <><p className="wallet-address">{wallet}</p><div className="account-list">{accounts.slice(0, 5).map((account) => <button key={account.name} className={account.name === selectedAccount?.name ? "account active-account" : "account"} onClick={() => setSelectedAccount(account)}><b>{account.name}</b><span>{account.clubId ? `MANAGES CLUB #${account.clubId}` : "NO MANAGED CLUB"}</span></button>)}</div></> : <><p className="empty-copy">Connect MetaMask: VerseSoccer will only read your public Xaya names, find the account that manages a club, then open that club automatically.</p><button className="action" onClick={connectWallet}>CONNECT METAMASK</button></>}</article>}
+      {widgets.includes("squad") && <article className="panel" {...widgetProps("squad")}><PanelTitle title="SQUAD MONITOR" detail={`${squad.length} PLAYERS · REAL NAMES FROM DATAPACK`}/><div className="squad-list">{squad.slice(0, 6).map((player, index) => <div className={index % 3 === 0 ? "row cyan" : index % 3 === 1 ? "row gold" : "row green"} key={player.player_id}><i/><div><b>{player.display_name}</b><small>{player.position_main} · fitness {player.fitness}%</small></div><strong>{player.rating}</strong></div>)}</div><div className="node-note"><b>DATAPACK ACTIVE</b><br/>Names are resolved from the custom Soccerverse datapack; game ratings remain live API data.</div></article>}
+      {widgets.includes("finance") && <article className="panel" {...widgetProps("finance")}><PanelTitle title="FINANCES" detail="LIVE CLUB DATA"/><div className="stat-stack"><Stat label="CLUB BALANCE" value={club ? svc(club.balance) : "…"}/><Stat label="TOTAL WAGES" value={club ? svc(club.total_wages ?? 0) : "…"}/><Stat label="SQUAD VALUE" value={club ? svc(club.total_player_value ?? 0) : "…"}/><Stat label="MANAGER ACCOUNT" value={selectedAccount ? svc(selectedAccount.balance ?? 0) : "CONNECT"}/></div></article>}
+      {widgets.includes("market") && <article className="panel" {...widgetProps("market")}><PanelTitle title="MARKET PULSE" detail="CLUB INFLUENCE"/><div className="market-price">{club ? svc(club.last_price ?? 0) : "…"}<span>LAST PRICE</span></div><div className="market-line"><i/><i/><i/><i/><i/><i/></div><div className="split-stat"><span>7D VOLUME <b>{club ? svc(club.volume_7_day ?? 0) : "…"}</b></span><span>FORM <b>{club?.form || "—"}</b></span></div></article>}
+      {widgets.includes("account") && <article className="panel" {...widgetProps("account")}><PanelTitle title="WALLET & ACCOUNTS" detail={wallet ? `${accounts.length} XAYA NAMES` : "NOT CONNECTED"}/>{wallet ? <><p className="wallet-address">{wallet}</p><div className="account-list">{accounts.slice(0, 5).map((account) => <button key={account.name} className={account.name === selectedAccount?.name ? "account active-account" : "account"} onClick={() => setSelectedAccount(account)}><b>{account.name}</b><span>{account.clubId ? `MANAGES CLUB #${account.clubId}` : "NO MANAGED CLUB"}</span></button>)}</div></> : <><p className="empty-copy">Connect MetaMask: VerseSoccer will only read your public Xaya names, find the account that manages a club, then open that club automatically.</p><button className="action" onClick={connectWallet}>CONNECT METAMASK</button></>}</article>}
     </section>
-    {wallet && <CommandDeck onSelect={(command) => setMessage(`${command}: preflight is prepared. The exact Xaya move must be validated against the official command schema before MetaMask can sign it.`)}/>}
+    {wallet && <CommandDeck onSelect={(command) => { if (command === "TACTICS") setActiveTab("TACTICS"); setMessage(`${command}: payload catalogue opened. Tactics are fully preflighted; the other game commands are documented but remain intentionally disabled until each rule is validated.`); }}/>}
   </main>;
 }
 
@@ -148,6 +151,40 @@ function MatchList({ fixtures, presentation }: { fixtures: import("@/lib/soccerv
   const matches = fixtures.slice(-4);
   if (!matches.length) return <p className="empty-copy">Fixtures are loading from the Soccerverse game-state service.</p>;
   return <div className="match-list">{matches.map((fixture) => <div className="match-row" key={fixture.fixture_id}><small>{new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short" }).format(new Date(fixture.date * 1000))}</small><b>{presentation?.clubNames[fixture.home_club] ?? `Club #${fixture.home_club}`} {fixture.played ? `${fixture.home_goals} - ${fixture.away_goals}` : "–"} {presentation?.clubNames[fixture.away_club] ?? `Club #${fixture.away_club}`}</b></div>)}</div>;
+}
+function TacticWorkbench({ wallet, accountName, clubId, squad, onMessage }: { wallet: string | null; accountName: string | null; clubId: number; squad: import("@/lib/soccerverse").Player[]; onMessage: (value: string) => void }) {
+  const [formation, setFormation] = useState(12);
+  const [style, setStyle] = useState(0);
+  const [mode, setMode] = useState<"public" | "commit">("public");
+  const [prepared, setPrepared] = useState<Awaited<ReturnType<typeof createTacticDraft>> | null>(null);
+  const [status, setStatus] = useState("Prepare a team sheet: no transaction has been requested.");
+  const [confirmed, setConfirmed] = useState(false);
+  const draftKey = `versesoccer:tactic:${wallet}:${clubId}`;
+  async function prepare() {
+    try {
+      const draft = await createTacticDraft(squad.map((player) => player.player_id), formation, style, clubId);
+      setPrepared(draft); setStatus(`${mode === "commit" ? "Hidden commit" : "Public team sheet"} prepared with 18 players. Review and simulate it before signing.`);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not prepare the team sheet."); }
+  }
+  async function run(live: boolean, reveal = false) {
+    if (!wallet || !accountName || !window.ethereum) { setStatus("Connect the manager’s MetaMask wallet first."); return; }
+    try {
+      let draft = prepared;
+      if (reveal) { const saved = window.localStorage.getItem(draftKey); if (!saved) throw new Error("No hidden tactic has been stored in this browser."); draft = JSON.parse(saved); }
+      if (!draft) throw new Error("Prepare the team sheet first.");
+      const move = reveal ? draft.revealMove : mode === "commit" ? draft.commitMove : draft.publicMove;
+      const transaction = await composeXayaMove(accountName, move);
+      if (!live) {
+        const gas = await window.ethereum.request({ method: "eth_estimateGas", params: [{ from: wallet, to: XAYA_ACCOUNTS_ADDRESS, data: transaction.data }] });
+        setStatus(`Simulation accepted by Polygon. Token #${transaction.tokenId}, nonce ${transaction.nonce}, estimated gas ${String(gas)}. No transaction was sent.`); return;
+      }
+      if (!confirmed) throw new Error("Confirm that you want to create a real Polygon transaction first.");
+      if (mode === "commit" && !reveal) window.localStorage.setItem(draftKey, JSON.stringify(draft));
+      const hash = await window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: wallet, to: XAYA_ACCOUNTS_ADDRESS, data: transaction.data }] });
+      setStatus(`Transaction submitted to MetaMask: ${String(hash)}. Wait for Polygon confirmation before reloading the game state.`); onMessage("Tactics move sent to MetaMask. The GSP may take a moment to index it.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "The preflight failed or the wallet rejected the request."); }
+  }
+  return <section className="tactic-workbench"><header><div><b>TACTIC LAB / ATK TEST READY</b><span>Real Soccerverse commit-reveal format · Polygon mainnet</span></div><span className="tactic-state">{mode === "commit" ? "HIDDEN" : "PUBLIC"}</span></header><div className="tactic-controls"><label>FORMATION<select value={formation} onChange={(event) => setFormation(Number(event.target.value))}>{[[0,"4-4-2"],[1,"4-3-3"],[3,"3-4-3"],[12,"4-2-3-1"],[14,"4-4-1-1"],[19,"4-2-4"]].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>PLAY STYLE<select value={style} onChange={(event) => setStyle(Number(event.target.value))}>{[[0,"Normal"],[1,"Defensive"],[2,"Offensive"],[3,"Passing"],[4,"Counter"],[5,"Long balls"]].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>VISIBILITY<select value={mode} onChange={(event) => setMode(event.target.value as "public" | "commit")}><option value="public">Public · one move</option><option value="commit">Hidden · commit then reveal</option></select></label><button className="action" onClick={() => void prepare()}>PREPARE 18-PLAYER SHEET</button></div><p className="tactic-status">{status}</p>{prepared && <><details><summary>Inspect the exact Soccerverse move (JSON)</summary><code>{mode === "commit" ? prepared.commitMove : prepared.publicMove}</code></details><div className="tactic-actions"><button onClick={() => void run(false)}>SIMULATE ON POLYGON</button><label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}/> I understand this creates a real on-chain move.</label><button className="live-action" disabled={!confirmed} onClick={() => void run(true)}>SEND TO METAMASK</button>{mode === "commit" && <button onClick={() => void run(true, true)}>REVEAL SAVED TACTIC</button>}</div></>}</section>;
 }
 function CommandDeck({ onSelect }: { onSelect: (command: string) => void }) {
   const commands = [

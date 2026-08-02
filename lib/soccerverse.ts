@@ -71,7 +71,7 @@ async function getPack() {
 
 async function gspGet<T>(method: string, params: Record<string, unknown>): Promise<T | null> {
   try {
-    const response = await fetch("https://services.soccerverse.com/gsp/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), next: { revalidate: 60 } });
+    const response = await fetch("https://services.soccerverse.com/gsp/", { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://play.soccerverse.com", Referer: "https://play.soccerverse.com/" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), next: { revalidate: 60 } });
     if (!response.ok) return null;
     const body = await response.json() as { result?: { data?: T } };
     return body.result?.data ?? null;
