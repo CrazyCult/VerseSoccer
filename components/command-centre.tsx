@@ -6,15 +6,18 @@ import { composeXayaMove, createTacticDraft, importPendingTactic, XAYA_ACCOUNTS_
 import { TacticWorkbench } from "@/components/tactic-workbench";
 import { FinanceWorkspace, SquadWorkspace } from "@/components/club-workspaces";
 import { PublicHome } from "@/components/public-home";
+import { GeneratedWidget, WidgetStudio, type CustomWidget } from "@/components/widget-studio";
 
 declare global {
   interface Window { ethereum?: { request: (request: { method: string; params?: unknown[] }) => Promise<unknown> } }
 }
 
-type Widget = "club" | "stadium" | "league" | "influencers" | "trades" | "news" | "chat" | "votes" | "market" | "squad" | "finance" | "account";
-const defaultWidgets: Widget[] = ["club", "stadium", "league", "influencers", "trades", "news", "chat", "votes", "market", "squad", "finance", "account"];
+type Widget = "club" | "stadium" | "league" | "influencers" | "trades" | "news" | "chat" | "votes" | "market" | "squad" | "finance" | "account" | "studio";
+type WidgetLayout = { width: number; height: number };
+const defaultWidgets: Widget[] = ["club", "stadium", "league", "influencers", "trades", "news", "chat", "votes", "market", "squad", "finance", "account", "studio"];
+const defaultLayouts: Record<string, WidgetLayout> = { club: { width: 2, height: 1 }, stadium: { width: 2, height: 1 } };
 const widgetLabels: Record<Widget, string> = {
-  club: "Club description", stadium: "Stadium & matches", league: "League table", influencers: "Top influencers", trades: "Latest trades", news: "Latest news", chat: "Club chat", votes: "Proposals & votes", market: "Price & volume", squad: "Squad monitor", finance: "Finances", account: "Wallet & accounts",
+  club: "Club description", stadium: "Stadium & matches", league: "League table", influencers: "Top influencers", trades: "Latest trades", news: "Latest news", chat: "Club chat", votes: "Proposals & votes", market: "Price & volume", squad: "Squad monitor", finance: "Finances", account: "Wallet & accounts", studio: "Widget studio",
 };
 
 export function CommandCentre() {
@@ -23,6 +26,9 @@ export function CommandCentre() {
   const [selectedAccount, setSelectedAccount] = useState<WalletAccount | null>(null);
   const [snapshot, setSnapshot] = useState<ClubSnapshot | null>(null);
   const [widgets, setWidgets] = useState<Widget[]>(defaultWidgets);
+  const [widgetLayouts, setWidgetLayouts] = useState<Record<string, WidgetLayout>>(defaultLayouts);
+  const [customWidgets, setCustomWidgets] = useState<CustomWidget[]>([]);
+  const [marketData, setMarketData] = useState<Record<string, Record<string, unknown>[]>>({});
   const [customizing, setCustomizing] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [manualAddress, setManualAddress] = useState("");
@@ -32,6 +38,8 @@ export function CommandCentre() {
 
   const clubId = selectedAccount?.clubId ?? null;
   const storageKey = `versesoccer:widgets:${wallet ?? "public"}`;
+  const layoutKey = `versesoccer:widget-layouts:${wallet ?? "public"}`;
+  const customWidgetKey = `versesoccer:custom-widgets:${wallet ?? "public"}`;
 
   useEffect(() => {
     const saved = window.localStorage.getItem(storageKey);
@@ -43,6 +51,25 @@ export function CommandCentre() {
   useEffect(() => {
     window.localStorage.setItem(storageKey, JSON.stringify(widgets));
   }, [storageKey, widgets]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(layoutKey);
+    if (saved) { try { setWidgetLayouts({ ...defaultLayouts, ...JSON.parse(saved) as Record<string, WidgetLayout> }); } catch { setWidgetLayouts(defaultLayouts); } }
+    const savedCustom = window.localStorage.getItem(customWidgetKey);
+    if (savedCustom) { try { setCustomWidgets(JSON.parse(savedCustom) as CustomWidget[]); } catch { setCustomWidgets([]); } }
+  }, [layoutKey, customWidgetKey]);
+
+  useEffect(() => { window.localStorage.setItem(layoutKey, JSON.stringify(widgetLayouts)); }, [layoutKey, widgetLayouts]);
+  useEffect(() => { window.localStorage.setItem(customWidgetKey, JSON.stringify(customWidgets)); }, [customWidgetKey, customWidgets]);
+
+  useEffect(() => {
+    const sources = [...new Set(customWidgets.map((widget) => widget.source).filter((source) => source === "marketPlayers" || source === "marketClubs"))];
+    for (const source of sources) {
+      if (source in marketData) continue;
+      setMarketData((current) => ({ ...current, [source]: [] }));
+      fetch(`/api/explore?source=${source}`).then((response) => response.ok ? response.json() : []).then((rows: Record<string, unknown>[]) => setMarketData((current) => ({ ...current, [source]: rows }))).catch(() => undefined);
+    }
+  }, [customWidgets, marketData]);
 
   useEffect(() => {
     if (!clubId) {
@@ -93,10 +120,18 @@ export function CommandCentre() {
     setWidgets((current) => current.includes(widget) ? current.filter((item) => item !== widget) : [...current, widget]);
   }
 
+  function resizeWidget(widget: string, axis: keyof WidgetLayout, amount: number) {
+    setWidgetLayouts((current) => {
+      const layout = current[widget] ?? defaultLayouts[widget] ?? { width: 1, height: 1 };
+      return { ...current, [widget]: { ...layout, [axis]: Math.max(1, Math.min(axis === "width" ? 3 : 3, layout[axis] + amount)) } };
+    });
+  }
+
   function widgetProps(widget: Widget) {
+    const layout = widgetLayouts[widget] ?? defaultLayouts[widget] ?? { width: 1, height: 1 };
     return {
       draggable: true,
-      style: { order: widgets.indexOf(widget) },
+      style: { order: widgets.indexOf(widget), gridColumn: `span ${layout.width}`, gridRow: `span ${layout.height}` },
       onDragStart: () => setDraggedWidget(widget),
       onDragOver: (event: React.DragEvent<HTMLElement>) => event.preventDefault(),
       onDrop: () => {
@@ -122,7 +157,7 @@ export function CommandCentre() {
     {!wallet && manualMode && <form className="manual-wallet public-wallet-form" onSubmit={(event) => { event.preventDefault(); void resolveWallet(manualAddress.trim()); }}><input aria-label="Public wallet address" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="0x… public Polygon wallet address" pattern="0x[a-fA-F0-9]{40}" required/><button type="submit">OPEN THIS WALLET</button></form>}
     {club && <nav className="club-tabs">{["OVERVIEW", "SQUAD", "TACTICS", "FINANCES", "TRANSFERS", "VOTES", "HISTORY"].map((tab) => <button key={tab} className={activeTab === tab ? "selected" : ""} onClick={() => { setActiveTab(tab); if (tab !== "TACTICS") setMessage(`${tab} workspace is being connected to the same live club data.`); }}>{tab}</button>)}</nav>}
     {activeTab === "OVERVIEW" && <section className="overview-tools"><span>{message}</span><button className="outline-button" onClick={() => setCustomizing((value) => !value)}>⚙ CUSTOMISE WIDGETS</button></section>}
-    {activeTab === "OVERVIEW" && customizing && <section className="customizer"><b>YOUR HOME PAGE</b><span>Widgets are saved locally for this wallet.</span>{(Object.keys(widgetLabels) as Widget[]).map((widget) => <label key={widget}><input type="checkbox" checked={widgets.includes(widget)} onChange={() => toggleWidget(widget)} /> {widgetLabels[widget]}</label>)}</section>}
+    {activeTab === "OVERVIEW" && customizing && <section className="customizer"><b>YOUR HOME PAGE</b><span>Drag widgets to reorder. Use W/H controls to save their grid size for this wallet.</span>{(Object.keys(widgetLabels) as Widget[]).map((widget) => <label key={widget}><input type="checkbox" checked={widgets.includes(widget)} onChange={() => toggleWidget(widget)} /> {widgetLabels[widget]}<span className="widget-size"><button onClick={(event) => { event.preventDefault(); resizeWidget(widget, "width", -1); }}>W−</button><button onClick={(event) => { event.preventDefault(); resizeWidget(widget, "width", 1); }}>W+</button><button onClick={(event) => { event.preventDefault(); resizeWidget(widget, "height", -1); }}>H−</button><button onClick={(event) => { event.preventDefault(); resizeWidget(widget, "height", 1); }}>H+</button></span></label>)}</section>}
     {activeTab === "TACTICS" && clubId && <TacticWorkbench wallet={wallet} accountName={selectedAccount?.name ?? null} clubId={clubId} squad={squad} fixtures={snapshot?.fixtures ?? []} presentation={presentation} onMessage={setMessage}/>}
     {activeTab === "SQUAD" && <SquadWorkspace squad={squad}/>}
     {activeTab === "FINANCES" && snapshot && <FinanceWorkspace balanceSheet={snapshot.balanceSheet} balance={club?.balance ?? 0}/>}
@@ -140,6 +175,8 @@ export function CommandCentre() {
       {widgets.includes("finance") && <article className="panel" {...widgetProps("finance")}><PanelTitle title="FINANCES" detail="LIVE CLUB DATA"/><div className="stat-stack"><Stat label="CLUB BALANCE" value={club ? svc(club.balance) : "…"}/><Stat label="TOTAL WAGES" value={club ? svc(club.total_wages ?? 0) : "…"}/><Stat label="SQUAD VALUE" value={club ? svc(club.total_player_value ?? 0) : "…"}/><Stat label="MANAGER ACCOUNT" value={selectedAccount ? svc(selectedAccount.balance ?? 0) : "CONNECT"}/></div></article>}
       {widgets.includes("market") && <article className="panel" {...widgetProps("market")}><PanelTitle title="MARKET PULSE" detail="CLUB INFLUENCE"/><div className="market-price">{club ? svc(club.last_price ?? 0) : "…"}<span>LAST PRICE</span></div><div className="market-line"><i/><i/><i/><i/><i/><i/></div><div className="split-stat"><span>7D VOLUME <b>{club ? svc(club.volume_7_day ?? 0) : "…"}</b></span><span>FORM <b>{club?.form || "—"}</b></span></div></article>}
       {widgets.includes("account") && <article className="panel" {...widgetProps("account")}><PanelTitle title="WALLET & ACCOUNTS" detail={wallet ? `${accounts.length} XAYA NAMES` : "NOT CONNECTED"}/>{wallet ? <><p className="wallet-address">{wallet}</p><div className="account-list">{accounts.slice(0, 5).map((account) => <button key={account.name} className={account.name === selectedAccount?.name ? "account active-account" : "account"} onClick={() => setSelectedAccount(account)}><b>{account.name}</b><span>{account.clubId ? `MANAGES CLUB #${account.clubId}` : "NO MANAGED CLUB"}</span></button>)}</div></> : <><p className="empty-copy">Connect MetaMask: VerseSoccer will only read your public Xaya names, find the account that manages a club, then open that club automatically.</p><button className="action" onClick={connectWallet}>CONNECT METAMASK</button></>}</article>}
+      {widgets.includes("studio") && <WidgetStudio onCreate={(widget) => setCustomWidgets((current) => [...current, widget])}/>}
+      {customWidgets.map((widget) => <GeneratedWidget key={widget.id} widget={widget} club={club} squad={squad} league={snapshot?.leagueTable ?? []} market={marketData} onRemove={() => setCustomWidgets((current) => current.filter((item) => item.id !== widget.id))} onResize={(axis, amount) => setCustomWidgets((current) => current.map((item) => item.id === widget.id ? { ...item, [axis]: Math.max(1, Math.min(3, item[axis] + amount)) } : item))}/>) }
     </section>}
     {activeTab === "OVERVIEW" && wallet && <CommandDeck onSelect={(command) => { if (command === "TACTICS") setActiveTab("TACTICS"); setMessage(`${command}: payload catalogue opened. Tactics are fully preflighted; the other game commands are documented but remain intentionally disabled until each rule is validated.`); }}/>}
   </main>;
