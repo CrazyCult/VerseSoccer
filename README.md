@@ -24,7 +24,8 @@ L’application est disponible sur http://localhost:3000. L’endpoint de contr�
 4. Ajouter les variables d’environnement suivantes :
 
        SOCCERVERSE_API_BASE_URL=https://services.soccerverse.com/api
-       SOCCERVERSE_DATAPACK_URL=https://elrincondeldt.com/sv/rincon_v4.json
+       SOCCERVERSE_DATAPACK_URL=https://elrincondeldt.com/sv/rincon_v1.json
+       SOCCERVERSE_PLAYER_DATAPACK_URL=https://elrincondeldt.com/sv/rincon_v4.json
 
 5. Déployer. Les pull requests auront leurs previews ; la branche principale aura la production.
 
@@ -34,6 +35,6 @@ L’application est disponible sur http://localhost:3000. L’endpoint de contr�
 - L'adresse est résolue via le sous-graphe Xaya public, puis les comptes et clubs via les API Soccerverse publiques.
 - Le premier compte qui gère un club est ouvert automatiquement. S'il y en a plusieurs, un sélecteur apparaît.
 - Les widgets peuvent être affichés ou masqués depuis **Customise widgets**. La configuration est enregistrée dans le navigateur, séparément pour chaque wallet.
-- Le datapack enrichit les IDs joueurs avec les vrais noms. Il est mis en cache 24 heures côté serveur.
+- Le pack communautaire complet fournit les vrais noms, blasons, stades et ligues. La mise à jour joueurs est appliquée par-dessus. Les deux sources sont mises en cache 24 heures côté serveur.
 
 WalletConnect doit être ajouté avec un identifiant de projet Reown/WalletConnect propre au déploiement ; il n'est volontairement pas simulé. Les endpoints Soccerverse utilisés ici sont en lecture seule. Toute action de gestion on-chain devra rester dans un module séparé avec confirmation explicite de l’utilisateur.
